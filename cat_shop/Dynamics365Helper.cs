@@ -1,0 +1,106 @@
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Messages;
+using Microsoft.Xrm.Sdk.Metadata;
+using Microsoft.Xrm.Sdk.Query;
+
+public class Dynamics365Helper
+{
+    // Dynamics 365サービスとの通信を行うためのIOrganizationServiceインスタンス
+    private readonly Microsoft.Xrm.Sdk.IOrganizationService _service;
+
+    // コンストラクタでIOrganizationServiceのインスタンスを受け取る
+    public Dynamics365Helper(IOrganizationService service)
+    {
+        _service = service ?? throw new ArgumentNullException(nameof(service));
+    }
+
+    /// <summary>
+    /// Salesエンティティに必要なフィールドを追加する。
+    /// </summary>
+    public void EnsureFieldsInSales()
+    {
+        // 商品数を取得
+        var productCount = GetProductCount();
+        // 既存のSalesフィールドを取得
+        var existingFields = GetExistingSalesFields();
+
+        // 不足しているフィールドを追加
+        for (int i = existingFields.Count; i < productCount; i++)
+        {
+            AddSalesField(i + 1);
+        }
+    }
+
+    /// <summary>
+    /// Productsテーブルから商品数を取得する。
+    /// </summary>
+    /// <returns>商品の数</returns>
+    private int GetProductCount()
+    {
+        // QueryExpressionを使用してcr11a_itemエンティティのレコードを取得
+        QueryExpression query = new QueryExpression("cr11a_item")
+        {
+            ColumnSet = new ColumnSet("cr11a_itemid")
+        };
+        var result = _service.RetrieveMultiple(query);
+
+        // 結果のエンティティ数を返す
+        return result.Entities.Count;
+    }
+
+    /// <summary>
+    /// Salesエンティティに存在するフィールドを取得する。
+    /// </summary>
+    /// <returns>既存のSalesフィールドのリスト</returns>
+    private List<string> GetExistingSalesFields()
+    {
+        // 既存のSalesフィールド名を保持するリスト
+        var existingFields = new List<string>();
+
+        // RetrieveEntityRequestを使用してSalesエンティティのメタデータを取得
+        RetrieveEntityRequest retrieveEntityRequest = new RetrieveEntityRequest
+        {
+            EntityFilters = EntityFilters.Attributes,
+            LogicalName = "cr11a_sales"
+        };
+        RetrieveEntityResponse retrieveEntityResponse = (RetrieveEntityResponse)_service.Execute(retrieveEntityRequest);
+
+        // Salesエンティティの属性を確認し、cr11a_sales_itemnameで始まるフィールドをリストに追加
+        foreach (var attribute in retrieveEntityResponse.EntityMetadata.Attributes)
+        {
+            if (attribute.LogicalName.StartsWith("cr11a_sales_itemname"))
+            {
+                existingFields.Add(attribute.LogicalName);
+            }
+        }
+
+        return existingFields;
+    }
+
+    /// <summary>
+    /// Salesエンティティに新しいフィールドを追加する。
+    /// </summary>
+    /// <param name="fieldNumber">追加するフィールドの番号</param>
+    private void AddSalesField(int fieldNumber)
+    {
+        // 新しいフィールドの名前を生成
+        var attributeName = $"cr11a_sales_itemname{fieldNumber}";
+
+        // CreateAttributeRequestを使用して新しいフィールドを作成
+        CreateAttributeRequest createAttributeRequest = new CreateAttributeRequest
+        {
+            EntityName = "cr11a_sales",
+            Attribute = new StringAttributeMetadata
+            {
+                SchemaName = attributeName,
+                LogicalName = attributeName,
+                DisplayName = new Label($"Sales Item Name {fieldNumber}", 1033),
+                RequiredLevel = new AttributeRequiredLevelManagedProperty(AttributeRequiredLevel.None),
+                MaxLength = 100
+            }
+        };
+
+        // 新しいフィールドの作成リクエストを実行
+        _service.Execute(createAttributeRequest);
+    }
+}
