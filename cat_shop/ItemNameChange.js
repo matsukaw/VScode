@@ -1,5 +1,5 @@
 const FIELD_NAMES = {
-    ITEM_NAME: "cr11a_itemn",
+    ITEM_NAME: "cr11a_itemname",
     QUANTITY: "cr11a_quantity",
     SELLING_PRICE: "cr11a_sellingprice",
     TOTAL_PRICE: "cr11a_totalamount"
@@ -15,7 +15,7 @@ function onLoad(executionContext) {
         var formContext = executionContext.getFormContext();
 
         // 商品名フィールドの値を取得
-        var itemName = formContext.getAttribute(FIELD_NAMES.ITEM_NAME).getValue();
+        var itemName = formContext.getAttribute(FIELD_NAMES.ITEM_NAME)?.getValue();
 
         // 商品名が設定されている場合は価格と数量を設定
         if (itemName) {
@@ -43,7 +43,7 @@ function onItemNameChange(executionContext) {
         }
 
         var formContext = executionContext.getFormContext();
-        var itemName = formContext.getAttribute(FIELD_NAMES.ITEM_NAME).getValue();
+        var itemName = formContext.getAttribute(FIELD_NAMES.ITEM_NAME)?.getValue();
 
         if (itemName) {
             setItemPriceAndQuantity(formContext, itemName);
@@ -71,14 +71,19 @@ function setItemPriceAndQuantity(formContext, itemName) {
 
                     // 合計価格を計算して設定
                     calculateTotalPrice(formContext);
+                } else {
+                    // データが見つからない場合は価格と数量をクリア
+                    clearItemPriceAndQuantity(formContext);
                 }
             },
             function(error) {
                 console.error("Error in setItemPriceAndQuantity (retrieveMultipleRecords): " + error.message);
+                clearItemPriceAndQuantity(formContext);
             }
         );
     } catch (error) {
         console.error("Error in setItemPriceAndQuantity: " + error.message);
+        clearItemPriceAndQuantity(formContext);
     }
 }
 
@@ -87,9 +92,7 @@ function clearItemPriceAndQuantity(formContext) {
     try {
         setFieldValue(formContext, FIELD_NAMES.QUANTITY, null);
         setFieldValue(formContext, FIELD_NAMES.SELLING_PRICE, null);
-
-        // 合計価格も再計算して設定
-        calculateTotalPrice(formContext);
+        setFieldValue(formContext, FIELD_NAMES.TOTAL_PRICE, null);
     } catch (error) {
         console.error("Error in clearItemPriceAndQuantity: " + error.message);
     }
@@ -110,42 +113,15 @@ function setFieldValue(formContext, fieldName, value) {
 // 合計価格を計算する関数
 function calculateTotalPrice(formContext) {
     try {
-        var totalPrice = 0;
-        var itemFields = formContext.data.entity.attributes.get().filter(attr => attr.getName().startsWith(FIELD_NAMES.ITEM_NAME));
+        var quantity = formContext.getAttribute(FIELD_NAMES.QUANTITY)?.getValue();
+        var sellingPrice = formContext.getAttribute(FIELD_NAMES.SELLING_PRICE)?.getValue();
 
-        var promises = itemFields.map(field => {
-            var itemName = field.getValue();
-            if (itemName) {
-                return Xrm.WebApi.retrieveMultipleRecords("cr11a_item", "?$filter=cr11a_itemname eq '" + itemName + "'").then(
-                    function success(result) {
-                        if (result.entities.length > 0) {
-                            var itemPrice = result.entities[0].cr11a_sellingprice;
-                            totalPrice += itemPrice;
-                        }
-                    },
-                    function(error) {
-                        console.error("Error in calculateTotalPrice (retrieveMultipleRecords): " + error.message);
-                    }
-                );
-            }
-        });
-
-        return Promise.all(promises).then(function() {
+        if (quantity != null && sellingPrice != null) {
+            var totalPrice = quantity * sellingPrice;
             setFieldValue(formContext, FIELD_NAMES.TOTAL_PRICE, totalPrice);
-
-            if (itemFields.length > 1) {
-                var sellingPriceControl = formContext.getControl(FIELD_NAMES.SELLING_PRICE);
-                if (sellingPriceControl) {
-                    sellingPriceControl.setVisible(false);
-                }
-                var totalPriceControl = formContext.getControl(FIELD_NAMES.TOTAL_PRICE);
-                if (totalPriceControl) {
-                    totalPriceControl.setVisible(true);
-                }
-            }
-        }).catch(function(error) {
-            console.error("Error in calculateTotalPrice: " + error.message);
-        });
+        } else {
+            setFieldValue(formContext, FIELD_NAMES.TOTAL_PRICE, null);
+        }
     } catch (error) {
         console.error("Error in calculateTotalPrice: " + error.message);
     }
